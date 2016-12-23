@@ -174,10 +174,14 @@ Function MakeMasterMatrix()
 		FindLevel/Q/P MasterWave, SecondWave[i]
 		if(V_flag == 0)
 			MasterMatrix[V_LevelX][i] = round(65535)
-			MasterMatrix[V_LevelX+1][i] = round(0.75*65535)
-			MasterMatrix[V_LevelX+2][i] = round(0.5*65535)
-			MasterMatrix[V_LevelX+3][i] = round(0.25*65535)
-			MasterMatrix[V_LevelX+4][i] = 10
+			MasterMatrix[V_LevelX+1][i] = round((7/8)*65535)
+			MasterMatrix[V_LevelX+2][i] = round((6/8)*65535)
+			MasterMatrix[V_LevelX+3][i] = round((5/8)*65535)
+			MasterMatrix[V_LevelX+4][i] = round((4/8)*65535)
+			MasterMatrix[V_LevelX+5][i] = round((3/8)*65535)
+			MasterMatrix[V_LevelX+6][i] = round((2/8)*65535)
+			MasterMatrix[V_LevelX+7][i] = round((1/8)*65535)
+			MasterMatrix[V_LevelX+8][i] = 10
 		endif
 	endfor
 End
@@ -227,6 +231,7 @@ Function PlotOutTracks()
 	
 	for (i = 0; i < nSteps; i += 1)
 		MatrixOP/O/FREE activeTrks = row(MasterMatrix,i)
+		TextBox/C/N=datBox/F=0/B=1/G=(1,52428,26586)/X=0.00/Y=0.00 Secs2Date(MasterWave[i],0)
 		if (sum(activeTrks) > 0)
 			for (j = 0; j < nTracks; j += 1)
 				if(MasterMatrix[i][j] > 0)
@@ -237,12 +242,8 @@ Function PlotOutTracks()
 						lonName = "root:data:" + folderName + ":" + folderName + "_lon"
 						AppendToGraph/W=trkbytrk $latName vs $lonName
 						ModifyGraph/W=trkbytrk rgb($wName)=(65535,0,65535,65535)
-					elseif(MasterMatrix[i][j] == round(0.75*65535))
-						ModifyGraph/W=trkbytrk rgb($wName)=(65535,0,65535,round(0.75*65535))
-					elseif(MasterMatrix[i][j] == round(0.5*65535))
-						ModifyGraph/W=trkbytrk rgb($wName)=(65535,0,65535,round(0.5*65535))
-					elseif(MasterMatrix[i][j] == round(0.25*65535))
-						ModifyGraph/W=trkbytrk rgb($wName)=(65535,0,65535,round(0.25*65535))
+					elseif(MasterMatrix[i][j] < 65535 && MasterMatrix[i][j] > 10)
+						ModifyGraph/W=trkbytrk rgb($wName)=(65535,0,65535,MasterMatrix[i][j])
 					elseif(MasterMatrix[i][j] == 10)
 						RemoveFromGraph/W=trkbytrk $wName
 					endif
@@ -253,7 +254,7 @@ Function PlotOutTracks()
 		DoUpdate
 		DoWindow/F trkbytrk
 		if(i == 0)
-			NewMovie/O/CTYP="jpeg"/F=5 as "trax"
+			NewMovie/O/CTYP="jpeg"/F=15 as "trax"
 		endif
 		AddMovieFrame
 	endfor
