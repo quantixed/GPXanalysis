@@ -13,6 +13,9 @@ Function GPXAnalysis()
 	MakeMasterWave()
 	MakeMasterMatrix()
 	PlotAllTracks()
+	PlotOutTracks()
+	FormatPlot("trkbytrk")
+	FormatPlot("allTracks")
 End
 
 Function LoadGPXFiles()
@@ -98,6 +101,10 @@ Function GPXReader(ExpDiskFolderName,ThisFile)
 	// transpose M_xmlcontent
 	WAVE/Z/T M_XMLcontent
 	nNodes = DimSize(M_XMLcontent,1)
+	if (nNodes < 10)
+		XMLwaveFmXpath(fileID,"/*/*[1]/*[1]/*/*[1]","","") // means name node was missing
+		nNodes = DimSize(M_XMLcontent,1)
+	endif
 	Make/O/T/N=(nNodes) UTCwave
 	
 	for(i = 0; i < nNodes; i += 1)
@@ -122,7 +129,7 @@ Function ConvertUTC2Time(UTCWave)
 		SplitString /E=(expr) UTCWave[i], yr,mh,dy,hh,mm,ss
 		SecWave[i]=date2secs(str2num(yr),str2num(mh),str2num(dy))+(3600*str2num(hh))+(60*str2num(mm))+str2num(ss)
 	EndFor
-	SetScale d 0, 0, "dat", SecWave
+	// SetScale d 0, 0, "dat", SecWave
 End
 
 Function MakeMasterWave()
@@ -200,7 +207,6 @@ Function PlotAllTracks()
 	Concatenate/O wList, tempWave
 	// Print wavemin(tempWave), wavemax(tempWave)
 	Variable/G root:maxVar = max(abs(wavemin(tempWave)),abs(wavemax(tempWave)))
-	FormatPlot("allTracks")
 	PlotOutTracks()
 	KillWaves tempWave
 End
@@ -210,7 +216,6 @@ Function PlotOutTracks()
 	SetDataFolder root:
 	DoWindow/K trkbytrk
 	Display/N=trkbytrk
-	FormatPlot("trkbytrk")
 	WAVE/T/Z DateWave,FileName
 	WAVE/Z MasterWave,SecondWave,MasterMatrix
 	Variable nSteps = DimSize(MasterMatrix,0)
