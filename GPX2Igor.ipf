@@ -13,9 +13,8 @@ Function GPXAnalysis()
 	MakeMasterWave()
 	MakeMasterMatrix()
 	PlotAllTracks()
-	PlotOutTracks()
-	FormatPlot("trkbytrk")
 	FormatPlot("allTracks")
+	PlotOutTracks()
 End
 
 Function LoadGPXFiles()
@@ -178,6 +177,7 @@ Function MakeMasterMatrix()
 			MasterMatrix[V_LevelX+1][i] = round(0.75*65535)
 			MasterMatrix[V_LevelX+2][i] = round(0.5*65535)
 			MasterMatrix[V_LevelX+3][i] = round(0.25*65535)
+			MasterMatrix[V_LevelX+4][i] = 10
 		endif
 	endfor
 End
@@ -207,15 +207,16 @@ Function PlotAllTracks()
 	Concatenate/O wList, tempWave
 	// Print wavemin(tempWave), wavemax(tempWave)
 	Variable/G root:maxVar = max(abs(wavemin(tempWave)),abs(wavemax(tempWave)))
-	PlotOutTracks()
 	KillWaves tempWave
 End
 
 Function PlotOutTracks()
-	
 	SetDataFolder root:
+	Make/O/N=(2,2) dummyWave = {{0,0},{0,0}}
 	DoWindow/K trkbytrk
-	Display/N=trkbytrk
+	Display/N=trkbytrk dummyWave[][1] vs dummyWave[][0]
+	ModifyGraph/W=trkbytrk rgb(dummyWave)=(65535,65535,65535)
+	FormatPlot("trkbytrk")
 	WAVE/T/Z DateWave,FileName
 	WAVE/Z MasterWave,SecondWave,MasterMatrix
 	Variable nSteps = DimSize(MasterMatrix,0)
@@ -242,12 +243,21 @@ Function PlotOutTracks()
 						ModifyGraph/W=trkbytrk rgb($wName)=(65535,0,65535,round(0.5*65535))
 					elseif(MasterMatrix[i][j] == round(0.25*65535))
 						ModifyGraph/W=trkbytrk rgb($wName)=(65535,0,65535,round(0.25*65535))
+					elseif(MasterMatrix[i][j] == 10)
+						RemoveFromGraph/W=trkbytrk $wName
 					endif
 				endif
 			endfor
 		endif
 		// take snap
+		DoUpdate
+		DoWindow/F trkbytrk
+		if(i == 0)
+			NewMovie/O/CTYP="jpeg"/F=5 as "trax"
+		endif
+		AddMovieFrame
 	endfor
+	CloseMovie
 End
 
 ///	@param	gName		graph name
