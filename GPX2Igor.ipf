@@ -1,11 +1,11 @@
 #pragma TextEncoding = "MacRoman"
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
-
+// Needs XMLutils XOP installed
 Function LoadGPXFiles()
 	NewDataFolder/O/S root:data
 	
 	String expDiskFolderName, expDataFolderName
-	String FileList, ThisFile
+	String FileList, ThisFile, GPXFilePath
 	Variable FileLoop, nWaves, i
 	
 	NewPath/O/Q/M="Please find disk folder" ExpDiskFolder
@@ -19,22 +19,30 @@ Function LoadGPXFiles()
 	Variable nFiles=ItemsInList(FileList)
 	
 	Make/O/T/N=(nFiles) root:FileName
-	Make/O/N=(nFiles) root:DateWave
+	Make/O/T/N=(nFiles) root:DateWave
 	Wave/T/Z FileName = root:FileName
-	Wave/Z PixelSize = root:DateWave
+	Wave/T/Z DateWave = root:DateWave
 	
 	for (FileLoop = 0; FileLoop < nFiles; FileLoop += 1)
 		ThisFile = StringFromList(FileLoop, FileList)
+		//NewPath/O/Q GPXFilePath, ExpDiskFolderName + ThisFile
 		expDataFolderName = ReplaceString(".gpx",ThisFile,"")
 		NewDataFolder/O/S $expDataFolderName
-		//
+		GPXReader(ExpDiskFolderName,ThisFile)
+		FileName[FileLoop] = expDataFolderName
+		WAVE/T/Z w0
+		DateWave[FileLoop] = 	w0[0]
 		SetDataFolder root:data:
 	endfor
+	SetDataFolder root:
 End
 
-Function DevFxn()
+/// @param	ThisFile		string reference to gpx file
+Function GPXReader(ExpDiskFolderName,ThisFile)
+	String ExpDiskFolderName,ThisFile
+	
 	Variable fileID
-	fileID = XMLopenfile("Macintosh HD:Users:steve:Desktop:Activities:activity1.gpx")
+	fileID = XMLopenfile(ExpDiskFolderName + ThisFile)
 	xmlelemlist(fileID)
 	WAVE/Z/T W_ElementList
 	Variable nNodes
