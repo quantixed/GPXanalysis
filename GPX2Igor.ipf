@@ -11,6 +11,7 @@ End
 Function GPXAnalysis()
 	LoadGPXFiles()
 	MakeMasterWave()
+	MakeMasterMatrix()
 	PlotAllTracks()
 End
 
@@ -52,7 +53,7 @@ Function LoadGPXFiles()
 	endfor
 	SetDataFolder root:
 	// Now sort them into order of occurrence
-	Sort SecWave, SecWave,UTCWave,FileName
+	Sort SecondWave, SecondWave,DateWave,FileName
 End
 
 /// @param	ThisFile		string reference to gpx file
@@ -68,7 +69,7 @@ Function GPXReader(ExpDiskFolderName,ThisFile)
 	nNodes = DimSize(W_ElementList,0)
 	Make/O/N=(nNodes) latWave,lonWave
 	String regExp = "lat:(.+);lon:(.+)"
-	String latNum, lonNum
+	String latNum, lonNum, wName
  
 	Variable i,j=0
 	
@@ -84,10 +85,14 @@ Function GPXReader(ExpDiskFolderName,ThisFile)
 	// j is now last row so
 	DeletePoints j, nNodes-j, latWave,lonWave
 	// centre start at origin
-	Duplicate/O latWave, latWave_n
-	Duplicate/O lonWave, lonWave_n
-	latWave_n -= latWave[0]
-	lonWave_n -= lonWave[0]
+	wName = ReplaceString(".gpx",ThisFile,"") + "_lat"
+	Duplicate/O latWave, $wName
+	Wave w0 = $wName
+	w0 -= latWave[0]
+	wName = ReplaceString("_lat",wName,"_lon")
+	Duplicate/O lonWave, $wName
+	Wave w0 = $wName
+	w0 -= lonWave[0]
 	
 	XMLwaveFmXpath(fileID,"/*/*[1]/*[2]/*/*[1]","","")
 	// transpose M_xmlcontent
@@ -149,10 +154,31 @@ Function MakeMasterWave()
 	Make/O/D/N=(totalPts) MasterWave = startsec + (p * (86400 / res))
 End
 
+Function MakeMasterMatrix()
+	SetDataFolder root:
+	WAVE/T/Z FileName
+	WAVE/Z MasterWave, SecondWave
+	Variable nSteps = numpnts(MasterWave)
+	Variable nTracks = numpnts(FileName)
+	Make/O/N=(nSteps,nTracks) MasterMatrix=0
+	
+	Variable i
+	
+	for (i = 0; i < nTracks; i += 1)
+		FindLevel/Q/P MasterWave, SecondWave[i]
+		if(V_flag == 0)
+			MasterMatrix[V_LevelX][i] = round(65535)
+			MasterMatrix[V_LevelX+1][i] = round(0.75*65535)
+			MasterMatrix[V_LevelX+2][i] = round(0.5*65535)
+			MasterMatrix[V_LevelX+3][i] = round(0.25*65535)
+		endif
+	endfor
+End
+
 Function PlotAllTracks()	
 	SetDataFolder root:data:
 	DFREF dfr = GetDataFolderDFR()
-	String folderName, trkName
+	String folderName, trkName, wList=""
 	Variable numDataFolders = CountObjectsDFR(dfr, 4)
 	
 	DoWindow/K allTracks
@@ -163,10 +189,77 @@ Function PlotAllTracks()
 		
 	for(i = 0; i < numDataFolders; i += 1)
 		folderName = GetIndexedObjNameDFR(dfr, 4, i)
-		trkName = "root:data:" + folderName + ":" + "latWave_n"
+		trkName = "root:data:" + folderName + ":" + folderName + "_lat"
+		wList += trkName + ";"
 		Wave latW = $trkName
-		trkName = "root:data:" + folderName + ":" + "lonWave_n"
+		trkName = "root:data:" + folderName + ":" + folderName + "_lon"
 		Wave lonW = $trkName
 		AppendToGraph/W=allTracks latW vs lonW
 	endfor
+	wList = wList + ReplaceString("_lat",wList,"_lon")
+	Concatenate/O wList, tempWave
+	// Print wavemin(tempWave), wavemax(tempWave)
+	Variable/G root:maxVar = max(abs(wavemin(tempWave)),abs(wavemax(tempWave)))
+	FormatPlot("allTracks")
+	PlotOutTracks()
+	KillWaves tempWave
+End
+
+Function PlotOutTracks()
+	
+	SetDataFolder root:
+	DoWindow/K trkbytrk
+	Display/N=trkbytrk
+	FormatPlot("trkbytrk")
+	WAVE/T/Z DateWave,FileName
+	WAVE/Z MasterWave,SecondWave,MasterMatrix
+	Variable nSteps = DimSize(MasterMatrix,0)
+	Variable nTracks = DimSize(MasterMatrix,1)
+	String latName, lonName, wName, folderName
+	
+	Variable i,j
+	
+	for (i = 0; i < nSteps; i += 1)
+		MatrixOP/O/FREE activeTrks = row(MasterMatrix,i)
+		if (sum(activeTrks) > 0)
+			for (j = 0; j < nTracks; j += 1)
+				if(MasterMatrix[i][j] > 0)
+					folderName = ReplaceString(".gpx",FileName[j],"")
+					wName = folderName + "_lat"
+					if(MasterMatrix[i][j] == 65535)
+						latName = "root:data:" + folderName + ":" + folderName + "_lat"
+						lonName = "root:data:" + folderName + ":" + folderName + "_lon"
+						AppendToGraph/W=trkbytrk $latName vs $lonName
+						ModifyGraph/W=trkbytrk rgb($wName)=(65535,0,65535,65535)
+					elseif(MasterMatrix[i][j] == round(0.75*65535))
+						ModifyGraph/W=trkbytrk rgb($wName)=(65535,0,65535,round(0.75*65535))
+					elseif(MasterMatrix[i][j] == round(0.5*65535))
+						ModifyGraph/W=trkbytrk rgb($wName)=(65535,0,65535,round(0.5*65535))
+					elseif(MasterMatrix[i][j] == round(0.25*65535))
+						ModifyGraph/W=trkbytrk rgb($wName)=(65535,0,65535,round(0.25*65535))
+					endif
+				endif
+			endfor
+		endif
+		// take snap
+	endfor
+End
+
+///	@param	gName		graph name
+Function FormatPlot(gName)
+	String gName
+	NVAR/Z maxVar
+	Variable limvar = maxVar
+	
+	SetAxis/W=$gName left -limVar,limVar
+	SetAxis/W=$gName bottom -limVar,limVar
+	ModifyGraph/W=$gName width={Plan,1,bottom,left}
+	ModifyGraph/W=$gName gbRGB=(62258,62258,62258) // 5% grey
+	ModifyGraph/W=$gName margin=5
+	ModifyGraph/W=$gName noLabel=2
+	ModifyGraph/W=$gName grid=1
+	ModifyGraph/W=$gName gridStyle=1,gridHair=0
+	ModifyGraph/W=$gName zero=1,zeroThick=2
+	ModifyGraph/W=$gName manTick={0,0.02,0,2},manMinor={0,50}
+	ModifyGraph/W=$gName axRGB=(65535,65535,65535),tlblRGB=(65535,65535,65535),alblRGB=(65535,65535,65535),gridRGB=(65535,65535,65535)
 End
