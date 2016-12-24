@@ -218,14 +218,19 @@ Function PlotOutTracks()
 	SetDataFolder root:
 	Make/O/N=(2,2) dummyWave = {{0,0},{0,0}}
 	DoWindow/K trkbytrk
-	Display/N=trkbytrk dummyWave[][1] vs dummyWave[][0]
+	Display/N=trkbytrk/W=(0,0,500,500) dummyWave[][1] vs dummyWave[][0]
 	ModifyGraph/W=trkbytrk rgb(dummyWave)=(65535,65535,65535)
 	FormatPlot("trkbytrk")
 	WAVE/T/Z DateWave,FileName
 	WAVE/Z MasterWave,SecondWave,MasterMatrix
 	Variable nSteps = DimSize(MasterMatrix,0)
 	Variable nTracks = DimSize(MasterMatrix,1)
-	String latName, lonName, wName, folderName
+	String latName, lonName, wName, folderName, iString, tiffName
+	NewPath/O/Q/M="Please find disk folder" OutputFolder
+	if (V_flag!=0)
+		DoAlert 0, "Disk folder error"
+		Return -1
+	endif
 	
 	Variable i,j
 	
@@ -254,9 +259,21 @@ Function PlotOutTracks()
 		DoUpdate
 		DoWindow/F trkbytrk
 		if(i == 0)
-			NewMovie/O/CTYP="jpeg"/F=15 as "trax"
+			NewMovie/O/P=OutputFolder/CTYP="jpeg"/F=15 as "trax"
 		endif
 		AddMovieFrame
+		//save out pics for gif assembly in ImageJ
+		if( i >= 0 && i < 10)
+			iString = "000" + num2str(i)
+		elseif( i >=10 && i < 100)
+			iString = "00" + num2str(i)
+		elseif(i >= 100 && i < 1000)
+			iString = "0" + num2str(i)
+		elseif(i >= 1000 && i < 10000)
+			iString = num2str(i)
+		endif
+		tiffName = "trkbytrk" + iString + ".tif"
+		SavePICT/P=OutputFolder/E=-7/B=288 as tiffName
 	endfor
 	CloseMovie
 End
