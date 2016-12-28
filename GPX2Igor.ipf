@@ -5,16 +5,24 @@
 
 // Menu item for easy execution
 Menu "Macros"
-	"GPX Analysis...",  GPXAnalysis()
+	"Running...",  RunGPXAnalysis()
+	"Cycling...",  CyclingGPXAnalysis()
 End
 
-Function GPXAnalysis()
+Function RunGPXAnalysis()
 	LoadGPXFiles()
 	MakeMasterWave()
 	MakeMasterMatrix()
 	PlotAllTracks()
-	FormatPlot("allTracks")
 	PlotOutTracks()
+	FormatPlot("allTracks")
+End
+
+Function CyclingGPXAnalysis()
+	LoadGPXFiles()
+	PlotAllTracks()
+	FormatPlot("allTracks")
+	ElevationChecker()
 End
 
 Function LoadGPXFiles()
@@ -96,20 +104,54 @@ Function GPXReader(ExpDiskFolderName,ThisFile)
 	Wave w0 = $wName
 	w0 -= lonWave[0]
 	
-	XMLwaveFmXpath(fileID,"/*/*[1]/*[2]/*/*[1]","","")
+	// find elevation data, if it's there
+	Duplicate/O/FREE/RMD=[][3,3] W_ElementList, elementcol
+	FindValue/TEXT="ele"/Z elementCol
+	if(V_Value >= 0)
+		String xpathstr0 = W_ElementList[V_Value][0]
+		// this will give something like /*/*[1]/*[2]/*[1]/*[1]
+		// we need /*/*[1]/*[2]/*/*[1]
+		// so trim 8 characters and add back last 5 characters
+		// we could run it again and then compare the two strings for safety
+		FindValue/TEXT="ele"/S=(V_Value+1)/Z elementCol
+		String xpathstr1 = W_ElementList[V_Value][0]
+		MakeXPathStr(xpathstr0,xpathstr1)
+		// Now get string from MakeXPathStr
+		SVAR xpathstr = root:gXpath
+	endif
+	XMLwaveFmXpath(fileID,xpathstr,"","")
 	// transpose M_xmlcontent
 	WAVE/Z/T M_XMLcontent
 	nNodes = DimSize(M_XMLcontent,1)
-	if (nNodes < 10)
-		XMLwaveFmXpath(fileID,"/*/*[1]/*[1]/*/*[1]","","") // means name node was missing
-		nNodes = DimSize(M_XMLcontent,1)
+	Make/O/N=(nNodes) elewave
+	// convert
+	for(i = 0; i < nNodes; i += 1)
+		elewave[i] = str2num(M_XMLcontent[0][i])
+	endfor
+	
+	// find elevation data, if it's there
+	FindValue/TEXT="time"/Z elementCol
+	if(V_Value >= 0)
+		xpathstr0 = W_ElementList[V_Value][0]
+		// this will give something like /*/*[1]/*[2]/*[1]/*[1]
+		// we need /*/*[1]/*[2]/*/*[1]
+		// so trim 8 characters and add back last 5 characters
+		// we could run it again and then compare the two strings for safety
+		FindValue/TEXT="time"/S=(V_Value+1)/Z elementCol
+		xpathstr1 = W_ElementList[V_Value][0]
+		MakeXPathStr(xpathstr0,xpathstr1)
 	endif
+	XMLwaveFmXpath(fileID,xpathstr,"","")
+	// transpose M_xmlcontent
+	WAVE/Z/T M_XMLcontent
+	nNodes = DimSize(M_XMLcontent,1)
 	Make/O/T/N=(nNodes) UTCwave
 	
 	for(i = 0; i < nNodes; i += 1)
 		UTCwave[i] = M_XMLcontent[0][i]
 	endfor
 	ConvertUTC2Time(UTCWave)
+	xmlclosefile(fileID,0)
 End
 
 // DateRead() is from IgorTunes
@@ -119,6 +161,9 @@ Function ConvertUTC2Time(UTCWave)
 	Wave/T UTCWave
 	
 	Variable npts=numpnts(UTCWave)
+//	if (npts == 0)
+//		Print "No points detected for", UTCWave
+//	endif
 	Make/O/D/N=(npts) SecWave
 	String expr="([[:digit:]]+)\-([[:digit:]]+)\-([[:digit:]]+)T([[:digit:]]+)\:([[:digit:]]+)\:([[:digit:]]+)Z"
 	String yr,mh,dy,hh,mm,ss
@@ -295,4 +340,79 @@ Function FormatPlot(gName)
 	ModifyGraph/W=$gName zero=1,zeroThick=2
 	ModifyGraph/W=$gName manTick={0,0.02,0,2},manMinor={0,50}
 	ModifyGraph/W=$gName axRGB=(65535,65535,65535),tlblRGB=(65535,65535,65535),alblRGB=(65535,65535,65535),gridRGB=(65535,65535,65535)
+End
+
+///	@param	xpathstr0		first xpath for comparison
+///	@param	xpathstr1		second xpath for comparison
+Function MakeXPathStr(xpathstr0,xpathstr1)
+	String xpathstr0
+	String xpathstr1
+	
+	String ss0,ss1
+	
+	String/G root:gXpath
+	SVAR xpathstr = root:gXpath
+	Variable nChar0 = strlen(xpathstr0)
+	Variable nChar1 = strlen(xpathstr1)
+	
+	if (nChar0 != nChar1)
+		Print "XPath lengths unequal"
+	endif
+	
+	Variable i,j
+	
+	for (i = 0; i < nChar0; i += 1)
+		ss0 = xpathstr0[i,i]
+		ss1 = xpathstr1[i,i]
+		if(cmpstr(ss0,ss1) != 0)
+			j = i
+			break
+		endif
+	endfor
+	xpathstr = xpathstr0[0,j-2] + xpathstr0[j+2,nChar0-1]
+End
+
+Function ElevationChecker()
+	SetDataFolder root:data:
+	DFREF dfr = GetDataFolderDFR()
+	String folderName, trkName="", wList=""
+	Variable numDataFolders = CountObjectsDFR(dfr, 4)
+	
+	Variable i
+	// lat = y, lon = x, ele = z
+		
+	for(i = 0; i < numDataFolders; i += 1)
+		folderName = GetIndexedObjNameDFR(dfr, 4, i)
+		trkName = "root:data:" + folderName + ":latWave"
+		Wave w = $trkName
+		if(WaveExists(w) == 1)
+			wList += trkName + ";"
+		endif
+	endfor
+	Concatenate/O/NP wList, root:xW
+	Print ItemsInList(wList)
+	wList=""	
+	for(i = 0; i < numDataFolders; i += 1)
+		folderName = GetIndexedObjNameDFR(dfr, 4, i)
+		trkName = "root:data:" + folderName + ":lonWave"
+		Wave w = $trkName
+		if(WaveExists(w) == 1)
+			wList += trkName + ";"
+		endif
+	endfor
+	Concatenate/O/NP wList, root:yW
+	Print ItemsInList(wList)
+	wList=""	
+	for(i = 0; i < numDataFolders; i += 1)
+		folderName = GetIndexedObjNameDFR(dfr, 4, i)
+		trkName = "root:data:" + folderName + ":eleWave"
+		Wave w = $trkName
+		if(WaveExists(w) == 1)
+			wList += trkName + ";"
+		else
+			Print "failed on", foldername
+		endif
+	endfor
+	Concatenate/O/NP wList, root:zW
+	Print ItemsInList(wList)
 End
