@@ -22,7 +22,9 @@ Function CyclingGPXAnalysis()
 	LoadGPXFiles()
 	PlotAllTracks()
 	FormatPlot("allTracks")
-	ElevationChecker()
+	// ElevationChecker()
+	CategorizeTracks()
+	PlotCatTracks()
 End
 
 Function LoadGPXFiles()
@@ -415,4 +417,152 @@ Function ElevationChecker()
 	endfor
 	Concatenate/O/NP wList, root:zW
 	Print ItemsInList(wList)
+End
+
+// Tracks can be A to C via B = ABC or C to A via D
+// Everything else to be discarded
+Function CategorizeTracks()
+	MakeABCCDA()	//external function
+	WAVE/Z modelWave = root:modelWave
+	SetDataFolder root:data:
+	DFREF dfr = GetDataFolderDFR()
+	String folderName, trkName="", wList=""
+	Variable numDataFolders = CountObjectsDFR(dfr, 4)
+	Make/O/N=(numDataFolders) root:catWave=0
+	Wave catWave = root:catWave
+	// 1 = ABC, 2 = CDA
+	Make/O/T/N=(numDataFolders) root:catTrackWave
+	Wave/T catTrackWave = root:catTrackWave
+	Variable npts,aTest,bTest,cTest,dTest
+		
+	Variable i
+	// lat = y, lon = x, ele = z
+		
+	for(i = 0; i < numDataFolders; i += 1)
+		folderName = GetIndexedObjNameDFR(dfr, 4, i)
+		catTrackWave[i] = folderName
+		trkName = "root:data:" + folderName + ":latWave"
+		Wave latW = $trkName
+		trkName = "root:data:" + folderName + ":lonWave"
+		Wave lonW = $trkName
+		npts = numpnts(latW)
+		aTest = sqrt((latW[0] - modelWave[0][0])^2 + (lonW[0] - modelWave[0][1])^2)
+		cTest = sqrt((latW[npts-1] - modelWave[2][0])^2 + (lonW[npts-1] - modelWave[2][1])^2)
+		if((aTest + cTest) < 0.002)
+			bTest = sqrt((latW[ceil(npts/2)] - modelWave[1][0])^2 + (lonW[ceil(npts/2)] - modelWave[1][1])^2)
+			if(bTest < 0.004)
+				catWave[i] = 1
+			endif
+		else
+			cTest = sqrt((latW[0] - modelWave[2][0])^2 + (lonW[0] - modelWave[2][1])^2)
+			aTest = sqrt((latW[npts-1] - modelWave[0][0])^2 + (lonW[npts-1] - modelWave[0][1])^2)
+			if((cTest + aTest) < 0.002)
+				dTest = sqrt((latW[ceil(npts/2)] - modelWave[3][0])^2 + (lonW[ceil(npts/2)] - modelWave[3][1])^2)
+				if(dTest < 0.004)
+					catWave[i] = 2
+				endif
+			endif
+		endif
+	endfor
+End
+
+Function PlotCatTracks()
+	SetDataFolder root:
+	DoWindow/K tracksABC
+	DoWindow/K tracksCDA
+	DoWindow/K tracksOther
+	Display/N=tracksABC
+	Display/N=tracksCDA
+	Display/N=tracksOther
+	WAVE/T/Z catTrackWave
+	WAVE/Z catWave
+	Variable nTracks = numpnts(catTrackWave)
+	String trackName, latName, lonName
+	
+	Variable i
+	
+	for(i = 0; i < nTracks; i += 1)
+		trackName = catTrackWave[i]
+		latName = "root:data:" + trackName + ":latWave"
+		lonName = "root:data:" + trackName + ":lonWave"
+		if(catWave[i] == 0)
+			AppendToGraph/W=tracksOther $latName vs $lonName
+		elseif(catWave[i] == 1)
+			AppendToGraph/W=tracksABC $latName vs $lonName
+		elseif(catWave[i] == 2)
+			AppendToGraph/W=tracksCDA $latName vs $lonName
+		endif
+	endfor
+	FormatPlot("tracksABC")
+	FormatPlot("tracksCDA")
+	FormatPlot("tracksOther")
+	// maxvar is no good
+	SetAxis/W=tracksABC left 52.35,52.4
+	SetAxis/W=tracksABC bottom -1.605,-1.535
+	SetAxis/W=tracksCDA left 52.35,52.4
+	SetAxis/W=tracksCDA bottom -1.605,-1.535
+	SetAxis/W=tracksOther left 52.35,52.4
+	SetAxis/W=tracksOther bottom -1.605,-1.535
+End
+
+Function PlotCatEle()
+	SetDataFolder root:
+	DoWindow/K eleABC
+	DoWindow/K eleCDA
+	Display/N=eleABC
+	Display/N=eleCDA
+	WAVE/T/Z catTrackWave
+	WAVE/Z catWave
+	Variable nTracks = numpnts(catTrackWave)
+	String trackName, eleName
+	
+	Variable i
+	
+	for(i = 0; i < nTracks; i += 1)
+		trackName = catTrackWave[i]
+		eleName = "root:data:" + trackName + ":eleWave"
+		if(catWave[i] == 1)
+			AppendToGraph/W=eleABC $eleName
+		elseif(catWave[i] == 2)
+			AppendToGraph/W=eleCDA $eleName
+		endif
+	endfor
+	// requires previous load
+	WAVE/Z canonABC
+	WAVE/Z canonCDA
+	AppendToGraph/W=eleABC canonABC[][2]
+	AppendToGraph/W=eleCDA canonCDA[][2]
+	ModifyGraph/W=eleABC rgb(canonABC)=(0,0,0)
+	ModifyGraph/W=eleCDA rgb(canonCDA)=(0,0,0)
+End
+
+Function MakeTopo()
+	SetDataFolder root:
+	WAVE/T/Z catTrackWave
+	WAVE/Z catWave
+	Variable nTracks = numpnts(catTrackWave)
+	String trackName, latName
+	String latListABC=""
+	String latListCDA=""
+	
+	Variable i
+	
+	for(i = 0; i < nTracks; i += 1)
+		trackName = catTrackWave[i]
+		latName = "root:data:" + trackName + ":latWave"
+		if(catWave[i] == 1)
+			latListABC += latName + ";"
+		elseif(catWave[i] == 2)
+			latListCDA += latName + ";"
+		endif
+	endfor
+	Concatenate/O/NP latListABC, topoABCy
+	Concatenate/O/NP ReplaceString("latW",latListABC,"lonW"), topoABCx
+	Concatenate/O/NP ReplaceString("latW",latListABC,"eleW"), topoABCz
+	Concatenate/O/KILL {topoABCx,topoABCy,topoABCz},topoABC
+	//
+	Concatenate/O/NP latListCDA, topoCDAy
+	Concatenate/O/NP ReplaceString("latW",latListCDA,"lonW"), topoCDAx
+	Concatenate/O/NP ReplaceString("latW",latListCDA,"eleW"), topoCDAz
+	Concatenate/O/KILL {topoCDAx,topoCDAy,topoCDAz},topoCDA
 End
