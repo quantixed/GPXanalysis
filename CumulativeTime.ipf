@@ -42,6 +42,9 @@ End
 // This runs Slooooww. Could do something more sophisticated, but this was the 1st attempt
 Function ParseAndAdd()
 	WAVE/Z numericTS
+	WAVE/Z time_diff_to_prev
+	Duplicate/O time_diff_to_prev, diffsec
+	diffsec = (abs(time_diff_to_prev[p]) < 14400) ? time_diff_to_prev[p] : 0
 	String wList = WaveList("year_*",";","")
 	Variable nWaves = ItemsInList(wList)
 	String wName,newName
@@ -64,7 +67,7 @@ Function ParseAndAdd()
 			else
 				hiVar = w0[j+1]
 			endif
-			sumW = (numericTS[p] >= loVar && numericTS[p] < hiVar) ? 1 : 0
+			sumW = (numericTS[p] >= loVar && numericTS[p] < hiVar) ? diffsec[p] : 0
 			w1[j] = sum(sumW)
 		endfor
 	endfor
