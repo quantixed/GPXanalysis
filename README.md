@@ -10,36 +10,4 @@ Now there are versions for looking at Running and Cycling. The running analysis 
 --
 
 ## CumulativeTime
-Rubitrack can output a single GPX file with multiple tracks. This can be read into R and then the cumulative time per year calculated using IGOR. This is an attempt to do this.
-
-For R:
-
-```R
-library(XML)
-library(lubridate)
-shift.vec <- function (vec, shift) {
-	if(length(vec) <= abs(shift)) {
-	rep(NA ,length(vec))
-	}else{
-	if (shift >= 0) {
-	c(rep(NA, shift), vec[1:(length(vec)-shift)]) }
-	else {
-	c(vec[(abs(shift)+1):length(vec)], rep(NA, abs(shift))) } } }
-# Parse the GPX file
-pfile <- htmlTreeParse("~/Desktop/allactivities.gpx",error = function (...) {}, useInternalNodes = T)
-elevations <- as.numeric(xpathSApply(pfile, path = "//trkpt/ele", xmlValue))
-times <- xpathSApply(pfile, path = "//trkpt/time", xmlValue)
-coords <- xpathSApply(pfile, path = "//trkpt", xmlAttrs)
-lats <- as.numeric(coords["lat",])
-lons <- as.numeric(coords["lon",])
-geodf <- data.frame(lat = lats, lon = lons,time = times)
-rm(list=c("elevations", "lats", "lons", "pfile", "times", "coords"))
-geodf$lat.p1 <- shift.vec(geodf$lat, -1)
-geodf$lon.p1 <- shift.vec(geodf$lon, -1)
-geodf$dist.to.prev <- apply(geodf, 1, FUN = function (row) {
-geodf$time <- strptime(geodf$time, format = "%Y-%m-%dT%H:%M:%OS")
-geodf$time.p1 <- shift.vec(geodf$time, -1)
-geodf$time.diff.to.prev <- as.numeric(difftime(geodf$time.p1, geodf$time))
-head(geodf)
-write.csv(geodf,'geodf.csv')
-```
+Rubitrack can output a single GPX file with multiple tracks. This can be read into R and then the cumulative time per year calculated using IGOR. To read in the GPX file use `GPX2CSV.R`
