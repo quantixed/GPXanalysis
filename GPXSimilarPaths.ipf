@@ -2,15 +2,25 @@
 #pragma rtGlobals=3				// Use modern global access method and strict wave access
 #pragma DefaultTab={3,20,4}		// Set default tab width in Igor Pro 9 and later
 
-// Read single gpx file containing multiple tracks into R,
-// organise timepoints in data frame and export
+// The aim is to analyse performance over a given course.
+// Igor finds similar tracks and clusters them and plots speed or pace over time
+// This is a similar feature as on Strava
+// Start by read a single gpx file containing multiple tracks into R,
+// organise timepoints in a data frame and export.
+// Use the correct menu item to read in the csv file from R.
+
+// Notes:
+//	The cluster cut-off is manual and may need altering for different courses
+// 	This version does not (yet) use the hierarchical clustering and dendrogram functions
+// which are coming in IGOR Pro 9
 
 Menu "Macros"
-	"GPX Clusters", FindSimilarPaths()
+	"GPX Clusters (Run)", FindSimilarPathsRun()
+	"GPX Clusters (Cycle)", FindSimilarPathsCycle()
 End
 
 
-Function FindSimilarPaths()
+Function FindSimilarPathsRun()
 	if(LoadCSVFromR() < 0)
 		return -1
 	else
@@ -21,7 +31,22 @@ Function FindSimilarPaths()
 	CompareTracks()
 	DendrogramGenerator()
 	IdentifyClusters(0.02,5)
-	PlotOutAllClusters()
+	PlotOutAllClusters(0)
+	MakeTheLayouts("clust",6,2, rev = 1, saveIt = 0, sorted = 1)
+End
+
+Function FindSimilarPathsCycle()
+	if(LoadCSVFromR() < 0)
+		return -1
+	else
+		ConstructIgorTimeWave()
+	endif
+	ParseTracks()
+	MakeUniTracks(64)
+	CompareTracks()
+	DendrogramGenerator()
+	IdentifyClusters(0.2,5)
+	PlotOutAllClusters(1)
 	MakeTheLayouts("clust",6,2, rev = 1, saveIt = 0, sorted = 1)
 End
 
@@ -88,7 +113,6 @@ Function ParseTracks()
 		tkDate[i] = numericTS[startRow[i] + 1] // taking next row since not certain that this row lines up with start
 		SetScale d 0,0,"dat", tkDate
 		tkTotalTime[i] = sum(time_point, startRow[i] + 1, endRow[i])
-//		SetScale d 0,0,"dat", tkTotalTime
 		tkTotalDistance[i] = sum(dist_point, startRow[i] + 1, endRow[i])
 	endfor
 	// calculate pace
@@ -128,9 +152,16 @@ Function MakeUniTracks(nPoints)
 		Duplicate/O/RMD=[][1]/FREE xyW, yW
 		distName = ReplaceString("track",xyName,"dist")
 		Wave distW = $distName
-		Interpolate2/T=1/N=(nPoints)/Y=xuW distW, xW
-		Interpolate2/T=1/N=(nPoints)/Y=yuW distW, yW
-		Concatenate/O/NP=1/KILL {xuW,yuW}, $("u_" + xyName)
+		if(DimSize(xyW,0) > 2)
+			Interpolate2/T=1/N=(nPoints)/Y=xuW distW, xW
+			Interpolate2/T=1/N=(nPoints)/Y=yuW distW, yW
+			Concatenate/O/NP=1/KILL {xuW,yuW}, $("u_" + xyName)
+		else
+			Make/O/N=(nPoints,2) $("u_" + xyName)
+			Wave fakeW = $("u_" + xyName)
+			fakeW[][0] = xW[0]
+			fakeW[][1] = yW[0]
+		endif
 	endfor
 	
 	return 0
@@ -387,8 +418,10 @@ Function IdentifyClusters(threshold, cSize)
 	ModifyGraph/W=dendro mode(spotsW)=3,marker(spotsW)=19,mrkThick(spotsW)=0,zColor(spotsW)={spotsZ,1,*,PastelsMap20,0},zColorMin(spotsW)=NaN
 End
 
-Function PlotOutAllClusters()
-	WAVE/Z clusterMembership, tkDate, tkPace, tkTotalDistance
+Function PlotOutAllClusters(runOrCycle)
+	Variable runOrCycle
+	
+	WAVE/Z clusterMembership, tkDate, tkPace, tkSpeed, tkTotalDistance
 	Variable nTracks = numpnts(clusterMembership)
 	String plotName, trackName, wName
 	
@@ -465,33 +498,54 @@ Function PlotOutAllClusters()
 	// find the min and max for the plot
 	Variable axMin = WaveMin(tkDate)
 	Variable axMax = WaveMax(tkDate)
-	Make/O/N=(5) paceAxTick = 240 + p * 30
-	Make/O/N=(5)/T paceAxLabel = {"04:00","04:30","05:00","05:30","06:00"}
+	if(runOrCycle == 0)
+		Make/O/N=(5) paceAxTick = 240 + p * 30
+		Make/O/N=(5)/T paceAxLabel = {"04:00","04:30","05:00","05:30","06:00"}
+	endif
 	// make the windows for pace, make the waves and plot
 	for(i = 1; i < WaveMax(clusterMembership) + 1; i += 1)
 		// make time wave for cluster
-		wName = "pacecomp" + num2str(i) + "_t"
+		if(runOrCycle == 0)
+			plotName = "clust_" + num2str(i) + "_pace"
+			wName = "pacecomp" + num2str(i) + "_t"
+		else
+			plotName = "clust_" + num2str(i) + "_speed"
+			wName = "speedcomp" + num2str(i) + "_t"
+		endif
 		Duplicate/O tkDate, $wName
 		Wave w0 = $wName
 		w0[] = (clusterMembership[p] == i) ? tkDate[p] : NaN
 		WaveTransform zapnans w0
-		// make pace wave for cluster
-		wName = "pacecomp" + num2str(i)
-		Duplicate/O tkPace, $wName
+		// make pace or speed wave for cluster
+		if(runOrCycle == 0)
+			wName = "pacecomp" + num2str(i)
+			Duplicate/O tkPace, $wName
+		else
+			wName = "speedcomp" + num2str(i)
+			Duplicate/O tkSpeed, $wName
+		endif
 		Wave w1 = $wName
 		w1[] = (clusterMembership[p] == i) ? w1[p] : NaN
 		WaveTransform zapnans w1
-		plotName = "clust_" + num2str(i) + "_pace"
+		
 		KillWindow/Z $plotname
 		Display/N=$plotName/HIDE=1 w1 vs w0
 		// format the plot
 		ModifyGraph/W=$plotName mode=3,marker=19,rgb=(0,0,0)
 		ModifyGraph/W=$plotName dateInfo(bottom)={0,1,0}
-		ModifyGraph/W=$plotName dateInfo(left)={0,2,0}
 		Label/W=$plotName bottom " "
-		Label/W=$plotName left "Pace (min/km)"
 		SetAxis/W=$plotName bottom axMin,axMax
-		SetAxis/W=$plotName left 240,360 // 4 min to 6 min per km
+		
+		if(runOrCycle == 0)
+			ModifyGraph/W=$plotName dateInfo(left)={0,2,0}
+			Label/W=$plotName left "Pace (min/km)"
+			SetAxis/W=$plotName left 240,360 // 4 min to 6 min per km
+		else
+			Label/W=$plotName left "Speed (km/h)"
+			ModifyGraph/W=$plotName nticks(bottom)=10 // sample covered almost 10 years
+			SetAxis/W=$plotName left 22,38 // 22 to 38 km per h
+		endif
+		
 		ModifyGraph/W=$plotName userticks(left)={paceAxTick,paceAxLabel}
 		ModifyGraph/W=$plotName grid=1,gridRGB=(43690,43690,43690)
 		ModifyGraph/W=$plotName mrkThick=0,rgb=(0,0,0,32768)
