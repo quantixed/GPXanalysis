@@ -32,6 +32,7 @@ Function FindSimilarPathsRun()
 	DendrogramGenerator()
 	IdentifyClusters(0.02,5)
 	PlotOutAllClusters(0)
+	StandardPace()
 	MakeTheLayouts("clust",6,2, rev = 1, saveIt = 0, sorted = 1)
 End
 
@@ -45,7 +46,7 @@ Function FindSimilarPathsCycle()
 	MakeUniTracks(64)
 	CompareTracks()
 	DendrogramGenerator()
-	IdentifyClusters(0.2,5)
+	IdentifyClusters(5,5)
 	PlotOutAllClusters(1)
 	MakeTheLayouts("clust",6,2, rev = 1, saveIt = 0, sorted = 1)
 End
@@ -576,6 +577,47 @@ STATIC Function MakeTheColorWave()
 	colorW[][2] = 0.75
 	colorW[][3] = 0.5
 	colorW *=65535
+End
+
+Function StandardPace()
+	String wList = WaveList("pacecomp*",";","")
+	String tList = WaveList("pacecomp*_t",";","")
+	wList = RemoveFromList(tList,wList)
+	Variable nWaves = ItemsInList(wList)
+	String wName, newName, zList = ""
+	tList = ""
+	
+	Variable i
+	
+	for(i = 0; i < nWaves; i += 1)
+		wName = StringFromList(i,wList)
+		Wave w0 = $wName
+		newName = "z_" + wName
+		Make/O/D/N=(numpnts(w0)) $newName
+		Wave w1 = $newName
+		w1[] = (w0[p] - mean(w0)) / sqrt(variance(w0))
+		zList += newName + ";"
+		tList += wName + "_t;"
+	endfor
+	Concatenate/O/KILL zList, standardPaceW
+	Concatenate/O tList, standardPaceT
+	
+	// Smoothing
+	Sort standardPaceT,standardPaceT,standardPaceW
+	Duplicate/O standardPaceW,standardPaceW_smth
+	Loess/V=2/SMTH=0.1/ORD=0 factors={standardPaceT}, srcWave= standardPaceW_smth
+	// make the graph
+	String plotname = "standardPlot"
+	Display/N=$plotName standardPaceW vs standardPaceT
+	ModifyGraph/W=$plotName mode=3,marker=19,rgb=(0,0,0,19661)
+	ModifyGraph/W=$plotName dateInfo(bottom)={0,1,0}
+	ModifyGraph/W=$plotName zero(left)=4
+	Label/W=$plotName bottom " "
+	SetAxis/A/N=1/E=2/W=$plotName left
+	Label/W=$plotName left "Standard Pace (z)"
+	AppendToGraph/W=$plotName standardPaceW_smth vs standardPaceT
+	ModifyGraph/W=$plotName lsize(standardPaceW_smth)=4
+	ModifyGraph/W=$plotName rgb(standardPaceW_smth)=(65535,0,0,32768)
 End
 
 Function MakeTheLayouts(prefix,nRow,nCol,[iter, filtVar, orient, rev, saveIt, sorted])
